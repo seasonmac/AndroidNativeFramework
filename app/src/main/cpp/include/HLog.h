@@ -9,19 +9,16 @@
 #include <syscall.h>
 #include <unistd.h>
 #include <cstdint>
+#include <chrono>
 
-#include "Timers.h"
-#include "Micros.h"
-//#include "CallStack.h"
+#include "Macros.h"
 
 #ifndef DEBUG_LEVEL
-#define DEBUG_LEVEL 0   // LOGI
+#define DEBUG_LEVEL 0   // HLOGI - 2; HLOGV -0
 #endif  // DEBUG_LEVEL
 
 #if DEBUG_LEVEL < 6
 //  close all the logs
-//#        include <utils/threads.h>
-//#include <IErrorController.h>
 #ifndef __BASEFILE__
 #    define __BASEFILE__ strrchr(__FILE__, '/')
 #endif  // __BASEFILE__
@@ -58,12 +55,12 @@ private:
     const char *file;
     int32_t line;
     const char *func;
-    int64_t mEnterTime;
+    std::chrono::time_point<std::chrono::high_resolution_clock> mEnterTime;
 public:
     inline __CallLog__(const char *__logtag, const char *__file, int32_t __line, const char *__func)
             :
             logtag(__logtag), file(__file), line(__line), func(__func),
-            mEnterTime(uptimeMillis()) {
+            mEnterTime(std::chrono::high_resolution_clock::now()) {
         LOG_IF_ENABLED(LOG_DEBUG, logtag, "TID:%d ...%s:%d:\tEnter %s\n",
                        static_cast<int32_t>(syscall(__NR_gettid)), strrchr(file, '/'), line, func);
     }
@@ -72,17 +69,18 @@ public:
         LOG_IF_ENABLED(LOG_DEBUG, logtag,
                        "TID:%d ...%s:%d:\tTime diff from line %d is %lld millis\n",
                        static_cast<int32_t>(syscall(__NR_gettid)), strrchr(file, '/'), line,
-                       diffLine, uptimeMillis() - mEnterTime);
+                       diffLine, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - mEnterTime).count());
     }
 
     inline ~__CallLog__() {
         LOG_IF_ENABLED(LOG_DEBUG, logtag, "TID:%d ...%s:%d:\tLeave %s (takes %llu millis)\n",
                        static_cast<int32_t>(syscall(__NR_gettid)), strrchr(file, '/'), line, func,
-                       uptimeMillis() - mEnterTime);
+                       std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - mEnterTime).count());
     }
 };
 
 #define HLOGENTRY(args...) __CallLog__ __call_log__(LOG_TAG, __FILE__, __LINE__, __FUNCTION__);
+#define HLOGTENTRY(logtag, args...) __CallLog__ __call_log__(logtag, __FILE__, __LINE__, __FUNCTION__);
 
 #define HLOGTIMEDIFF(args...) __call_log__.timeDiff(__LINE__);
 
