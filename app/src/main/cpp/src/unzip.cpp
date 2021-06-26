@@ -29,23 +29,14 @@
 #include <set>
 #include <string>
 
-#include <android_base/file.h>
-#include <android_base/strings.h>
+#include <File.h>
+#include <StringUtils.h>
 #include <zip_archive.h>
-#include <android_base/file.h>
+#include <File.h>
 #include "unzip.h"
 #include <HLog.h>
 
 #define LOG_TAG "unzip"
-
-enum OverwriteMode {
-    kAlways,
-    kNever,
-    kPrompt,
-};
-
-static OverwriteMode overwrite_mode = kPrompt;
-static const char *archive_name = nullptr;
 
 static bool MakeDirectoryHierarchy(const std::string &path) {
     // stat rather than lstat because a symbolic link to a directory is fine too.
@@ -53,7 +44,7 @@ static bool MakeDirectoryHierarchy(const std::string &path) {
     if (stat(path.c_str(), &sb) != -1 && S_ISDIR(sb.st_mode)) return true;
 
     // Ensure the parent directories exist first.
-    if (!MakeDirectoryHierarchy(android::base::Dirname(path))) return false;
+    if (!MakeDirectoryHierarchy(hms::File::Dirname(path))) return false;
 
     // Then try to create this directory.
     return (mkdir(path.c_str(), 0777) != -1);
@@ -68,23 +59,23 @@ static std::string GetFileNameBase(const std::string &name) {
 static void
 ExtractOne(ZipArchiveHandle zah, ZipEntry &entry, const std::string &name, const char *targetDir) {
     HLOGENTRY();
-    if (android::base::StartsWith(name, "/") || android::base::StartsWith(name, "../") ||
+    if (hms::StringUtils::StartsWith(name, "/") || hms::StringUtils::StartsWith(name, "../") ||
         name.find("/../") != std::string::npos) {
         HLOGE("bad filename %s", name.c_str());
     }
 
     // Where are we actually extracting to (for human-readable output)?
     std::string dst = targetDir;
-    if (!android::base::EndsWith(dst, "/")) dst += '/';
+    if (!hms::StringUtils::EndsWith(dst, "/")) dst += '/';
     dst += GetFileNameBase(name);
 
     // Ensure the directory hierarchy exists.
-    if (!MakeDirectoryHierarchy(android::base::Dirname(name))) {
+    if (!MakeDirectoryHierarchy(hms::File::Dirname(name))) {
         HLOGE("couldn't create directory hierarchy for %s", dst.c_str());
     }
 
     // An entry in a zip file can just be a directory itself.
-    if (android::base::EndsWith(name, "/")) {
+    if (hms::StringUtils::EndsWith(name, "/")) {
         if (mkdir(name.c_str(), entry.unix_mode) == -1) {
             // If the directory already exists, that's fine.
             if (errno == EEXIST) {
@@ -99,8 +90,7 @@ ExtractOne(ZipArchiveHandle zah, ZipEntry &entry, const std::string &name, const
     // Create the file.
     int fd = open(name.c_str(), O_CREAT | O_WRONLY | O_CLOEXEC | O_EXCL, entry.unix_mode);
     if (fd == -1 && errno == EEXIST) {
-        if (overwrite_mode == kNever) return;
-        // Either overwrite_mode is kAlways or the user consented to this specific case.
+        HLOGI("%s exsits, will overwrite it!",dst.c_str());
         fd = open(name.c_str(), O_WRONLY | O_CREAT | O_CLOEXEC | O_TRUNC, entry.unix_mode);
     }
     if (fd == -1) {

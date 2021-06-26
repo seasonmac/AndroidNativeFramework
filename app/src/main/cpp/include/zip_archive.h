@@ -24,82 +24,12 @@
 #include <string.h>
 #include <sys/cdefs.h>
 #include <sys/types.h>
-
+#include <ZipEntry.h>
+#include <ZipString.h>
 /* Zip compression methods we support */
 enum {
   kCompressStored = 0,    // no compression
   kCompressDeflated = 8,  // standard deflate
-};
-
-struct ZipString {
-  const uint8_t* name;
-  uint16_t name_length;
-
-  ZipString() {}
-
-  /*
-   * entry_name has to be an c-style string with only ASCII characters.
-   */
-  explicit ZipString(const char* entry_name);
-
-  bool operator==(const ZipString& rhs) const {
-    return name && (name_length == rhs.name_length) && (memcmp(name, rhs.name, name_length) == 0);
-  }
-
-  bool StartsWith(const ZipString& prefix) const {
-    return name && (name_length >= prefix.name_length) &&
-           (memcmp(name, prefix.name, prefix.name_length) == 0);
-  }
-
-  bool EndsWith(const ZipString& suffix) const {
-    return name && (name_length >= suffix.name_length) &&
-           (memcmp(name + name_length - suffix.name_length, suffix.name, suffix.name_length) == 0);
-  }
-};
-
-/*
- * Represents information about a zip entry in a zip file.
- */
-struct ZipEntry {
-  // Compression method: One of kCompressStored or
-  // kCompressDeflated.
-  uint16_t method;
-
-  // Modification time. The zipfile format specifies
-  // that the first two little endian bytes contain the time
-  // and the last two little endian bytes contain the date.
-  // See `GetModificationTime`.
-  // TODO: should be overridden by extra time field, if present.
-  uint32_t mod_time;
-
-  // Returns `mod_time` as a broken-down struct tm.
-  struct tm GetModificationTime() const;
-
-  // Suggested Unix mode for this entry, from the zip archive if created on
-  // Unix, or a default otherwise.
-  mode_t unix_mode;
-
-  // 1 if this entry contains a data descriptor segment, 0
-  // otherwise.
-  uint8_t has_data_descriptor;
-
-  // Crc32 value of this ZipEntry. This information might
-  // either be stored in the local file header or in a special
-  // Data descriptor footer at the end of the file entry.
-  uint32_t crc32;
-
-  // Compressed length of this ZipEntry. Might be present
-  // either in the local file header or in the data descriptor
-  // footer.
-  uint32_t compressed_length;
-
-  // Uncompressed length of this ZipEntry. Might be present
-  // either in the local file header or in the data descriptor
-  // footer.
-  uint32_t uncompressed_length;
-
-  // The offset to the start of data for this ZipEntry.
-  off64_t offset;
 };
 
 typedef void* ZipArchiveHandle;
@@ -182,9 +112,6 @@ void EndIteration(void* cookie);
 int32_t ExtractEntryToFile(ZipArchiveHandle handle, ZipEntry* entry, int fd);
 
 const char* ErrorCodeString(int32_t error_code);
-
-
-typedef bool (*ProcessZipEntryFunction)(const uint8_t* buf, size_t buf_size, void* cookie);
 
 
 

@@ -3,16 +3,6 @@
 //
 
 #pragma once
-
-#include <assert.h>
-#include <errno.h>
-#include <inttypes.h>
-#include <limits.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <cstdio>
-#include <sys/types.h>
-
 namespace hms {
     class MappedZipFile {
     public:
@@ -55,6 +45,6 @@ namespace hms {
         size_t read_pos_;
 
     private:
-        bool ReadFully(int fd, void* data, size_t byte_count);
+        bool ReadFully(int fd, void *data, size_t byte_count);
     };
 }

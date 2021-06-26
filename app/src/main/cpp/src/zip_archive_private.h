@@ -27,6 +27,7 @@
 #include <FileMap.h>
 #include "MappedZipFile.h"
 #include <zip_archive.h>
+#include <CentralDirectory.h>
 #include "Macros.h"
 
 static const char* kErrorMessages[] = {
@@ -92,20 +93,20 @@ enum ErrorCodes : int32_t {
 };
 
 
-class CentralDirectory {
- public:
-  CentralDirectory(void) : base_ptr_(nullptr), length_(0) {}
-
-  const uint8_t* GetBasePtr() const { return base_ptr_; }
-
-  size_t GetMapLength() const { return length_; }
-
-  void Initialize(void* map_base_ptr, off64_t cd_start_offset, size_t cd_size);
-
- private:
-  const uint8_t* base_ptr_;
-  size_t length_;
-};
+//class CentralDirectory {
+// public:
+//  CentralDirectory(void) : base_ptr_(nullptr), length_(0) {}
+//
+//  const uint8_t* GetBasePtr() const { return base_ptr_; }
+//
+//  size_t GetMapLength() const { return length_; }
+//
+//  void Initialize(void* map_base_ptr, off64_t cd_start_offset, size_t cd_size);
+//
+// private:
+//  const uint8_t* base_ptr_;
+//  size_t length_;
+//};
 
 struct ZipArchive {
   // open Zip archive

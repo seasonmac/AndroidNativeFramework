@@ -1,64 +1,33 @@
-/*
- * Copyright (C) 2008 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-/*
- * Read-only access to Zip archives, with minimal heap allocation.
- */
-#include <assert.h>
-#include <errno.h>
+#include <cassert>
+#include <cerrno>
 #include <fcntl.h>
-#include <inttypes.h>
-#include <limits.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
+#include <cinttypes>
+#include <climits>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
 #include <unistd.h>
 
 #include <memory>
 #include <vector>
 
-#include <android_base/file.h>
-//#include <android_base/logging.h>
-#include <android_base/macros.h>  // TEMP_FAILURE_RETRY may or may not be in unistd
-#include <android_base/memory.h>
-#include "android_base/Compat.h"
+#include <File.h>
 #include <FileMap.h>
 
 #include "zip_archive.h"
 #include "zlib.h"
-
-#include "entry_name_utils-inl.h"
 #include "zip_archive_common.h"
 #include "zip_archive_private.h"
 
 #include <sys/system_properties.h>
+
+#include <Macros.h>
 #include <HLog.h>
 #define LOG_TAG "ZipArchive"
-
-using android::base::get_unaligned;
 
 // Used to turn on crc checks - verify that the content CRC matches the values
 // specified in the local file header and the central directory.
 static const bool kCrcChecksEnabled = false;
-
-// This is for windows. If we don't open a file in binary mode, weird
-// things will happen.
-#ifndef O_BINARY
-#define O_BINARY 0
-#endif
 
 // The maximum number of bytes to scan backwards for the EOCD start.
 static const uint32_t kMaxEOCDSearch = kMaxCommentLen + sizeof(EocdRecord);
@@ -110,6 +79,40 @@ static uint32_t ComputeHash(const ZipString &name) {
     }
 
     return hash;
+}
+
+
+inline bool IsValidEntryName(const uint8_t* entry_name, const size_t length) {
+    for (size_t i = 0; i < length; ++i) {
+        const uint8_t byte = entry_name[i];
+        if (byte == 0) {
+            return false;
+        } else if ((byte & 0x80) == 0) {
+            // Single byte sequence.
+            continue;
+        } else if ((byte & 0xc0) == 0x80 || (byte & 0xfe) == 0xfe) {
+            // Invalid sequence.
+            return false;
+        } else {
+            // 2-5 byte sequences.
+            for (uint8_t first = byte << 1; first & 0x80; first <<= 1) {
+                ++i;
+
+                // Missing continuation byte..
+                if (i == length) {
+                    return false;
+                }
+
+                // Invalid continuation byte.
+                const uint8_t continuation_byte = entry_name[i];
+                if ((continuation_byte & 0xc0) != 0x80) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    return true;
 }
 
 /*
@@ -185,7 +188,7 @@ static int32_t MapCentralDirectory0(const char *debug_file_name, ZipArchive *arc
     for (; i >= 0; i--) {
         if (scan_buffer[i] == 0x50) {
             uint32_t *sig_addr = reinterpret_cast<uint32_t *>(&scan_buffer[i]);
-            if (get_unaligned<uint32_t>(sig_addr) == EocdRecord::kSignature) {
+            if (hms::get_unaligned<uint32_t>(sig_addr) == EocdRecord::kSignature) {
                 HLOGV("+++ Found EOCD at buf+%d", i);
                 break;
             }
@@ -895,7 +898,7 @@ public:
             return false;
         }
 
-        const bool result = android::base::WriteFully(fd_, buf, buf_size);
+        const bool result = hms::File::WriteFully(fd_, buf, buf_size);
         if (result) {
             total_bytes_written_ += buf_size;
         } else {
@@ -1130,16 +1133,16 @@ const char *ErrorCodeString(int32_t error_code) {
     return "Unknown return code";
 }
 
-ZipString::ZipString(const char *entry_name) : name(reinterpret_cast<const uint8_t *>(entry_name)) {
-    size_t len = strlen(entry_name);
-//    CHECK_LE(len, static_cast<size_t>(UINT16_MAX));
-    name_length = static_cast<uint16_t>(len);
-}
+//ZipString::ZipString(const char *entry_name) : name(reinterpret_cast<const uint8_t *>(entry_name)) {
+//    size_t len = strlen(entry_name);
+////    CHECK_LE(len, static_cast<size_t>(UINT16_MAX));
+//    name_length = static_cast<uint16_t>(len);
+//}
 
-void CentralDirectory::Initialize(void *map_base_ptr, off64_t cd_start_offset, size_t cd_size) {
-    base_ptr_ = static_cast<uint8_t *>(map_base_ptr) + cd_start_offset;
-    length_ = cd_size;
-}
+//void CentralDirectory::Initialize(void *map_base_ptr, off64_t cd_start_offset, size_t cd_size) {
+//    base_ptr_ = static_cast<uint8_t *>(map_base_ptr) + cd_start_offset;
+//    length_ = cd_size;
+//}
 
 bool ZipArchive::InitializeCentralDirectory(const char *debug_file_name, off64_t cd_start_offset,
                                             size_t cd_size) {
@@ -1174,16 +1177,3 @@ bool ZipArchive::InitializeCentralDirectory(const char *debug_file_name, off64_t
     return true;
 }
 
-tm ZipEntry::GetModificationTime() const {
-    tm t = {};
-
-    t.tm_hour = (mod_time >> 11) & 0x1f;
-    t.tm_min = (mod_time >> 5) & 0x3f;
-    t.tm_sec = (mod_time & 0x1f) << 1;
-
-    t.tm_year = ((mod_time >> 25) & 0x7f) + 80;
-    t.tm_mon = ((mod_time >> 21) & 0xf) - 1;
-    t.tm_mday = (mod_time >> 16) & 0x1f;
-
-    return t;
-}

@@ -28,8 +28,9 @@ add_library( # Sets the name of the library.
         src/FileMap.cpp
         src/zip_archive.cpp
         src/unzip.cpp
-        src/android_base/file.cpp
-        src/android_base/strings.cpp
+        src/File.cpp
+        src/StringUtils.cpp
+        src/ZipFile.cpp
         )
 
 # Searches for a specified prebuilt library and stores the path as a

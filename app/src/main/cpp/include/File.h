@@ -14,27 +14,20 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_BASE_STRINGS_H
-#define ANDROID_BASE_STRINGS_H
+#pragma once
 
-#include <sstream>
+#include <sys/stat.h>
 #include <string>
-#include <vector>
 
-namespace android {
-namespace base {
+#if !defined(O_BINARY)
+#define O_BINARY 0
+#endif
 
-// Splits a string into a vector of strings.
-std::vector<std::string> Split(const std::string& s,
-                               const std::string& delimiters);
+namespace hms {
+    class File {
+    public:
+        static bool WriteFully(int fd, const void *data, size_t byte_count);
 
-// Tests whether 's' starts with 'prefix'.
-bool StartsWith(const std::string& s, const char* prefix);
-
-// Tests whether 's' ends with 'suffix'.
-bool EndsWith(const std::string& s, const char* suffix);
-
-}  // namespace base
-}  // namespace android
-
-#endif  // ANDROID_BASE_STRINGS_H
+        static std::string Dirname(const std::string &path);
+    };
+}
