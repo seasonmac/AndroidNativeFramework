@@ -14,16 +14,33 @@
  * limitations under the License.
  */
 
-#include "android_base/errors.h"
+#include "base/quick_exit.h"
 
-#include <errno.h>
+#if !defined(__linux__)
+
+#include <mutex>
+#include <vector>
 
 namespace android {
 namespace base {
 
-std::string SystemErrorCodeToString(int error_code) {
-  return strerror(error_code);
+static auto& quick_exit_mutex = *new std::mutex();
+static auto& quick_exit_handlers = *new std::vector<void (*)()>();
+
+void quick_exit(int exit_code) {
+  std::lock_guard<std::mutex> lock(quick_exit_mutex);
+  for (auto it = quick_exit_handlers.rbegin(); it != quick_exit_handlers.rend(); ++it) {
+    (*it)();
+  }
+  _Exit(exit_code);
+}
+
+int at_quick_exit(void (*func)()) {
+  std::lock_guard<std::mutex> lock(quick_exit_mutex);
+  quick_exit_handlers.push_back(func);
+  return 0;
 }
 
 }  // namespace base
 }  // namespace android
+#endif

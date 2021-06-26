@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#include "android_base/file.h"
+#include "base/file.h"
 
-#include <cerrno>
+#include <errno.h>
 #include <fcntl.h>
 #include <libgen.h>
 #include <sys/stat.h>
@@ -24,17 +24,20 @@
 #include <unistd.h>
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
-#include <HLog.h>
-#define LOG_TAG "File"
-#include "android_base/macros.h"  // For TEMP_FAILURE_RETRY on Darwin.
-#include "android_base/unique_fd.h"
 
-
+#include "base/logging.h"
+#include "base/macros.h"  // For TEMP_FAILURE_RETRY on Darwin.
+#include "base/unique_fd.h"
+#include "base/utf8.h"
 
 namespace android {
 namespace base {
+
+// Versions of standard library APIs that support UTF-8 strings.
+using namespace android::base::utf8;
 
 bool ReadFdToString(int fd, std::string* content) {
   content->clear();
@@ -88,7 +91,7 @@ static bool CleanUpAfterFailedWrite(const std::string& path) {
   return false;
 }
 
-
+#if !defined(_WIN32)
 bool WriteStringToFile(const std::string& content, const std::string& path,
                        mode_t mode, uid_t owner, gid_t group,
                        bool follow_symlinks) {
@@ -96,26 +99,27 @@ bool WriteStringToFile(const std::string& content, const std::string& path,
               (follow_symlinks ? 0 : O_NOFOLLOW);
   android::base::unique_fd fd(TEMP_FAILURE_RETRY(open(path.c_str(), flags, mode)));
   if (fd == -1) {
-    HLOGE("android::WriteStringToFile open failed");
+    PLOG(ERROR) << "android::WriteStringToFile open failed";
     return false;
   }
 
   // We do an explicit fchmod here because we assume that the caller really
   // meant what they said and doesn't want the umask-influenced mode.
   if (fchmod(fd, mode) == -1) {
-    HLOGE("android::WriteStringToFile fchmod failed");
+    PLOG(ERROR) << "android::WriteStringToFile fchmod failed";
     return CleanUpAfterFailedWrite(path);
   }
   if (fchown(fd, owner, group) == -1) {
-    HLOGE("android::WriteStringToFile fchown failed");
+    PLOG(ERROR) << "android::WriteStringToFile fchown failed";
     return CleanUpAfterFailedWrite(path);
   }
   if (!WriteStringToFd(content, fd)) {
-    HLOGE("android::WriteStringToFile write failed");
+    PLOG(ERROR) << "android::WriteStringToFile write failed";
     return CleanUpAfterFailedWrite(path);
   }
   return true;
 }
+#endif
 
 bool WriteStringToFile(const std::string& content, const std::string& path,
                        bool follow_symlinks) {
@@ -179,6 +183,7 @@ bool RemoveFileIfExists(const std::string& path, std::string* err) {
   return true;
 }
 
+#if !defined(_WIN32)
 bool Readlink(const std::string& path, std::string* result) {
   result->clear();
 
@@ -200,7 +205,9 @@ bool Readlink(const std::string& path, std::string* result) {
     buf.resize(buf.size() * 2);
   }
 }
+#endif
 
+#if !defined(_WIN32)
 bool Realpath(const std::string& path, std::string* result) {
   result->clear();
 
@@ -212,6 +219,7 @@ bool Realpath(const std::string& path, std::string* result) {
   free(realpath_buf);
   return true;
 }
+#endif
 
 std::string GetExecutablePath() {
   std::string path;
@@ -226,6 +234,15 @@ std::string GetExecutableDirectory() {
 std::string Basename(const std::string& path) {
   // Copy path because basename may modify the string passed in.
   std::string result(path);
+
+#if !defined(__BIONIC__)
+  // Use lock because basename() may write to a process global and return a
+  // pointer to that. Note that this locking strategy only works if all other
+  // callers to basename in the process also grab this same lock, but its
+  // better than nothing.  Bionic's basename returns a thread-local buffer.
+  static std::mutex& basename_lock = *new std::mutex();
+  std::lock_guard<std::mutex> lock(basename_lock);
+#endif
 
   // Note that if std::string uses copy-on-write strings, &str[0] will cause
   // the copy to be made, so there is no chance of us accidentally writing to

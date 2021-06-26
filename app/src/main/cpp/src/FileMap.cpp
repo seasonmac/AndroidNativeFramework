@@ -122,26 +122,4 @@ namespace hms {
         return true;
     }
 
-// Provide guidance to the system.
-    int FileMap::advise(MapAdvice advice)
-    {
-        int cc, sysAdvice;
-
-        switch (advice) {
-            case NORMAL:        sysAdvice = MADV_NORMAL;        break;
-            case RANDOM:        sysAdvice = MADV_RANDOM;        break;
-            case SEQUENTIAL:    sysAdvice = MADV_SEQUENTIAL;    break;
-            case WILLNEED:      sysAdvice = MADV_WILLNEED;      break;
-            case DONTNEED:      sysAdvice = MADV_DONTNEED;      break;
-            default:
-                assert(false);
-                return -1;
-        }
-
-        cc = madvise(mBasePtr, mBaseLength, sysAdvice);
-        if (cc != 0)
-            HLOGW("madvise(%d) failed: %s\n", sysAdvice, strerror(errno));
-        return cc;
-    }
-
 }

@@ -33,11 +33,6 @@ static inline T get_unaligned(const void* address) {
   return result;
 }
 
-template <typename T>
-static inline void put_unaligned(void* address, T v) {
-  memcpy(address, &v, sizeof(T));
-}
-
 } // namespace base
 } // namespace android
 

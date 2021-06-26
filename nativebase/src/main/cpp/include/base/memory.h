@@ -14,27 +14,31 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_BASE_STRINGS_H
-#define ANDROID_BASE_STRINGS_H
+#ifndef ANDROID_BASE_MEMORY_H
+#define ANDROID_BASE_MEMORY_H
 
-#include <sstream>
-#include <string>
-#include <vector>
+#include <cstring>
 
 namespace android {
 namespace base {
 
-// Splits a string into a vector of strings.
-std::vector<std::string> Split(const std::string& s,
-                               const std::string& delimiters);
+// Use memcpy for access to unaligned data on targets with alignment
+// restrictions.  The compiler will generate appropriate code to access these
+// structures without generating alignment exceptions.
+template <typename T>
+static inline T get_unaligned(const void* address) {
+  T result;
+  //todo:memcpy_s
+  memcpy(&result, address, sizeof(T));
+  return result;
+}
 
-// Tests whether 's' starts with 'prefix'.
-bool StartsWith(const std::string& s, const char* prefix);
+template <typename T>
+static inline void put_unaligned(void* address, T v) {
+  memcpy(address, &v, sizeof(T));
+}
 
-// Tests whether 's' ends with 'suffix'.
-bool EndsWith(const std::string& s, const char* suffix);
+} // namespace base
+} // namespace android
 
-}  // namespace base
-}  // namespace android
-
-#endif  // ANDROID_BASE_STRINGS_H
+#endif  // ANDROID_BASE_MEMORY_H

@@ -19,6 +19,7 @@
 
 #include "HLog.h"
 #define LOG_TAG "MappedZipFile"
+
 namespace hms {
 
     int MappedZipFile::GetFileDescriptor() const {
@@ -63,10 +64,10 @@ namespace hms {
         } else {
             if (offset < 0 || offset > static_cast<off64_t>(data_length_)) {
                 HLOGE("Zip: invalid offset: %"
-                PRId64
-                ", data length: %"
-                PRId64
-                "\n", offset, data_length_);
+                              PRId64
+                              ", data length: %"
+                              PRId64
+                              "\n", offset, data_length_);
                 return false;
             }
 
@@ -74,8 +75,9 @@ namespace hms {
             return true;
         }
     }
-    bool MappedZipFile::ReadFully(int fd, void* data, size_t byte_count) {
-        uint8_t* p = reinterpret_cast<uint8_t*>(data);
+
+    bool MappedZipFile::ReadFully(int fd, void *data, size_t byte_count) {
+        uint8_t *p = reinterpret_cast<uint8_t *>(data);
         size_t remaining = byte_count;
         while (remaining > 0) {
             ssize_t n = TEMP_FAILURE_RETRY(read(fd, p, remaining));
@@ -85,6 +87,7 @@ namespace hms {
         }
         return true;
     }
+
     bool MappedZipFile::ReadData(uint8_t *buffer, size_t read_amount) {
         if (has_fd_) {
             if (!ReadFully(fd_, buffer, read_amount)) {
@@ -103,8 +106,8 @@ namespace hms {
         if (has_fd_) {
             if (static_cast<size_t>(TEMP_FAILURE_RETRY(pread64(fd_, buf, len, off))) != len) {
                 HLOGE("Zip: failed to read at offset %"
-                PRId64
-                "\n", off);
+                              PRId64
+                              "\n", off);
                 return false;
             }
             return true;

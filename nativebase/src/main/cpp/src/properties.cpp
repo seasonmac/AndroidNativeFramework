@@ -16,7 +16,7 @@
 
 #define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
 
-#include "android_base/properties.h"
+#include "base/properties.h"
 
 #include <sys/system_properties.h>
 #include <sys/_system_properties.h>
@@ -25,7 +25,7 @@
 #include <chrono>
 #include <string>
 
-#include <android_base/parseint.h>
+#include <base/parseint.h>
 
 #include <HLog.h>
 #define LOG_TAG "properties"

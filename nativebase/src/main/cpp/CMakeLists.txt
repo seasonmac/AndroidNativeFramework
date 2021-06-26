@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.10.2)
 
 # Declares and names the project.
 
-project("zip")
+project("nativebase")
 
 # Creates and names a library, sets it as either STATIC
 # or SHARED, and provides the relative paths to its source code.
@@ -15,21 +15,23 @@ project("zip")
 # Gradle automatically packages shared libraries with your APK.
 include_directories(include)
 #include_directories(include/android_base)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector-all -Wl,-z,relro -fPIE -pie -Wl,-z,noexecstack -s -DZLIB_CONST -D__ANDROID_API__=22")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector-all -Wl,-z,relro -fPIE -pie -Wl,-z,noexecstack -s")
 add_library( # Sets the name of the library.
-        native-lib
+        nativebase
 
         # Sets the library as a shared library.
         SHARED
 
         # Provides a relative path to your source file(s).
-        native-lib.cpp
-        src/MappedZipFile.cpp
-        src/FileMap.cpp
-        src/zip_archive.cpp
-        src/unzip.cpp
-        src/android_base/file.cpp
-        src/android_base/strings.cpp
+        src/chrono_utils.cpp
+        src/errors_unix.cpp
+        src/file.cpp
+        src/logging.cpp
+        src/parsenetaddress.cpp
+        src/properties.cpp
+        src/quick_exit.cpp
+        src/stringprintf.cpp
+        src/strings.cpp
         )
 
 # Searches for a specified prebuilt library and stores the path as a
@@ -45,20 +47,13 @@ find_library( # Sets the name of the path variable.
         # you want CMake to locate.
         log)
 
-find_library( # Sets the name of the path variable.
-        zip-lib
-
-        # Specifies the name of the NDK library that
-        # you want CMake to locate.
-        z)
 # Specifies libraries CMake should link to your target library. You
 # can link multiple libraries, such as libraries you define in this
 # build script, prebuilt third-party libraries, or system libraries.
 target_link_libraries( # Specifies the target library.
-        native-lib
+        nativebase
 
         # Links the target library to the log library
         # included in the NDK.
         ${log-lib}
-        ${zip-lib}
         )

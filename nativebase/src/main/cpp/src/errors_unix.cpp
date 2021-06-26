@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 The Android Open Source Project
+ * Copyright (C) 2016 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,27 +14,15 @@
  * limitations under the License.
  */
 
-#include <time.h>
-#include <android_base/chrono_utils.h>
+#include "base/errors.h"
+
+#include <errno.h>
 
 namespace android {
 namespace base {
 
-boot_clock::time_point boot_clock::now() {
-#ifdef __ANDROID__
-  timespec ts;
-  clock_gettime(CLOCK_BOOTTIME, &ts);
-  return boot_clock::time_point(std::chrono::seconds(ts.tv_sec) +
-                                std::chrono::nanoseconds(ts.tv_nsec));
-#else
-  // Darwin does not support clock_gettime.
-  return boot_clock::time_point();
-#endif  // __ANDROID__
-}
-
-std::ostream& operator<<(std::ostream& os, const Timer& t) {
-  os << t.duration().count() << "ms";
-  return os;
+std::string SystemErrorCodeToString(int error_code) {
+  return strerror(error_code);
 }
 
 }  // namespace base

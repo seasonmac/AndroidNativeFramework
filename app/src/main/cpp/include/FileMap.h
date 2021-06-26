@@ -43,26 +43,6 @@ namespace hms {
          */
         size_t getDataLength(void) const { return mDataLength; }
 
-        /*
-         * Get the data offset used to create this map.
-         */
-        off64_t getDataOffset(void) const { return mDataOffset; }
-
-        /*
-         * This maps directly to madvise() values, but allows us to avoid
-         * including <sys/mman.h> everywhere.
-         */
-        enum MapAdvice {
-            NORMAL, RANDOM, SEQUENTIAL, WILLNEED, DONTNEED
-        };
-
-        /*
-         * Apply an madvise() call to the entire file.
-         *
-         * Returns 0 on success, -1 on failure.
-         */
-        int advise(MapAdvice advice);
-
     protected:
 
     private:

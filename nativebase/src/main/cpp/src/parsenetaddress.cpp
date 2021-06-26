@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-#include "android_base/parsenetaddress.h"
+#include "base/parsenetaddress.h"
 
 #include <algorithm>
 
-#include "android_base/stringprintf.h"
-#include "android_base/strings.h"
+#include "base/stringprintf.h"
+#include "base/strings.h"
 
 namespace android {
 namespace base {

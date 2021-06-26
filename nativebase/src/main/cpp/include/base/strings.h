@@ -25,14 +25,26 @@ namespace android {
 namespace base {
 
 // Splits a string into a vector of strings.
+//
+// The string is split at each occurrence of a character in delimiters.
+//
+// The empty string is not a valid delimiter list.
 std::vector<std::string> Split(const std::string& s,
                                const std::string& delimiters);
 
+// Trims whitespace off both ends of the given string.
+std::string Trim(const std::string& s);
+
 // Tests whether 's' starts with 'prefix'.
 bool StartsWith(const std::string& s, const char* prefix);
+bool StartsWithIgnoreCase(const std::string& s, const char* prefix);
 
 // Tests whether 's' ends with 'suffix'.
 bool EndsWith(const std::string& s, const char* suffix);
+bool EndsWithIgnoreCase(const std::string& s, const char* suffix);
+
+// Tests whether 'lhs' equals 'rhs', ignoring case.
+bool EqualsIgnoreCase(const std::string& lhs, const std::string& rhs);
 
 }  // namespace base
 }  // namespace android

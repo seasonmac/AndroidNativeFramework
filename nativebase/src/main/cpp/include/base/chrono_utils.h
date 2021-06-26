@@ -20,8 +20,6 @@
 #include <chrono>
 #include <sstream>
 
-//using namespace std::chrono_literals;
-
 namespace android {
 namespace base {
 

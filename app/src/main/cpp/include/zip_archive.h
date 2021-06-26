@@ -24,7 +24,6 @@
 #include <string.h>
 #include <sys/cdefs.h>
 #include <sys/types.h>
-//#include <utils/Compat.h>
 
 /* Zip compression methods we support */
 enum {
@@ -115,29 +114,6 @@ typedef void* ZipArchiveHandle;
 int32_t OpenArchive(const char* fileName, ZipArchiveHandle* handle);
 
 /*
- * Like OpenArchive, but takes a file descriptor open for reading
- * at the start of the file.  The descriptor must be mappable (this does
- * not allow access to a stream).
- *
- * Sets handle to the value of the opaque handle for this file descriptor.
- * This handle must be released by calling CloseArchive with this handle.
- *
- * If assume_ownership parameter is 'true' calling CloseArchive will close
- * the file.
- *
- * This function maps and scans the central directory and builds a table
- * of entries for future lookups.
- *
- * "debugFileName" will appear in error messages, but is not otherwise used.
- *
- * Returns 0 on success, and negative values on failure.
- */
-int32_t OpenArchiveFd(const int fd, const char* debugFileName, ZipArchiveHandle* handle,
-                      bool assume_ownership = true);
-
-int32_t OpenArchiveFromMemory(void* address, size_t length, const char* debugFileName,
-                              ZipArchiveHandle* handle);
-/*
  * Close archive, releasing resources associated with it. This will
  * unmap the central directory of the zipfile and free all internal
  * data structures associated with the file. It is an error to use
@@ -205,29 +181,11 @@ void EndIteration(void* cookie);
  */
 int32_t ExtractEntryToFile(ZipArchiveHandle handle, ZipEntry* entry, int fd);
 
-/**
- * Uncompress a given zip entry to the memory region at |begin| and of
- * size |size|. This size is expected to be the same as the *declared*
- * uncompressed length of the zip entry. It is an error if the *actual*
- * number of uncompressed bytes differs from this number.
- *
- * Returns 0 on success and negative values on failure.
- */
-int32_t ExtractToMemory(ZipArchiveHandle handle, ZipEntry* entry, uint8_t* begin, uint32_t size);
-
-int GetFileDescriptor(const ZipArchiveHandle handle);
-
 const char* ErrorCodeString(int32_t error_code);
 
-#if !defined(_WIN32)
+
 typedef bool (*ProcessZipEntryFunction)(const uint8_t* buf, size_t buf_size, void* cookie);
 
-/*
- * Stream the uncompressed data through the supplied function,
- * passing cookie to it each time it gets called.
- */
-int32_t ProcessZipEntryContents(ZipArchiveHandle handle, ZipEntry* entry,
-                                ProcessZipEntryFunction func, void* cookie);
-#endif
+
 
 #endif  // LIBZIPARCHIVE_ZIPARCHIVE_H_
