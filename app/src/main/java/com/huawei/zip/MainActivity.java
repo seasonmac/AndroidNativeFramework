@@ -14,6 +14,7 @@ import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.zip.ZipFile;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -30,17 +31,28 @@ public class MainActivity extends AppCompatActivity {
         // Example of a call to a native method
         TextView tv = findViewById(R.id.sample_text);
         tv.setText(stringFromJNI());
-        Button unzipTestButton = (Button) findViewById(R.id.button);
+        Button unzipTestButton = findViewById(R.id.button);
         String zipPath = getPackageResourcePath();
         String targetDir = getCacheDir().getAbsolutePath();
         unzipTestButton.setOnClickListener((view) -> {
             long native_start = System.currentTimeMillis();
             unzip(zipPath, "assets/manager.apk", targetDir);
-            Log.i("Native_unzip", "cost time :" + (System.currentTimeMillis() - native_start) + "ms");
+            Log.i("Perf_unzip_native", "cost time :" + (System.currentTimeMillis() - native_start) + "ms");
             long start = System.currentTimeMillis();
-            copyApk(getBaseContext(), "manager.apk", "manager.apk");
-            Log.i("Java_unzip", "cost time :" + (System.currentTimeMillis() - start) + "ms");
+            copyApk(getBaseContext(), "manager.apk", "manager_AssetManager.apk");
+            Log.i("Perf_unzip_assetmanager", "cost time :" + (System.currentTimeMillis() - start) + "ms");
+            start = System.currentTimeMillis();
+            copyApk2(zipPath, "assets/manager.apk", targetDir + "/manager_ZipFile.apk");
+            Log.i("Perf_unzip_zipfile", "cost time :" + (System.currentTimeMillis() - start) + "ms");
         });
+    }
+
+    private static boolean copyApk2(String zipPath, String extractFileName, String dstFilePath) {
+        try (ZipFile zip = new ZipFile(zipPath)) {
+            ZipUtil.extractFileFromZip(zip, extractFileName, dstFilePath);
+        } catch (IOException ioe) {
+        }
+        return true;
     }
 
     private static boolean copyApk(Context ctx, String apkName, String targetApkName) {

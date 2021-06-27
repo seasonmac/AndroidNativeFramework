@@ -4,4 +4,5 @@
 
 #pragma once
 
-int unzip(const char* archive_name,const char* targetDir,const std::string& fileName);
+
+int extractFileFromZip(const char* zipFileName, const std::string& extractFileName, const char* dstFilePath);

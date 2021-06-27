@@ -25,10 +25,9 @@
 
 #include <Macros.h>
 #include <ZipFile.h>
-#include <HLog.h>
 #include <IterationHandle.h>
 #include <FileWriter.h>
-
+#include <HLog.h>
 #define LOG_TAG "ZipFile"
 
 namespace hms {
@@ -61,26 +60,7 @@ namespace hms {
         return hash;
     }
 
-    int64_t ZipFile::EntryToIndex(const ZipString *hash_table, const uint32_t hash_table_size,
-                                  const ZipString &name) {
-        const uint32_t hash = ComputeHash(name);
-
-        // NOTE: (hash_table_size - 1) is guaranteed to be non-negative.
-        uint32_t ent = hash & (hash_table_size - 1);
-        while (hash_table[ent].name != NULL) {
-            if (hash_table[ent] == name) {
-                return ent;
-            }
-
-            ent = (ent + 1) & (hash_table_size - 1);
-        }
-
-        HLOGV("Zip: Unable to find entry %.*s", name.name_length, name.name);
-        return kEntryNotFound;
-    }
-
-    int32_t ZipFile::AddToHash(ZipString *hash_table, const uint64_t hash_table_size,
-                               const ZipString &name) {
+    int32_t ZipFile::AddToHash(const ZipString &name) {
         const uint64_t hash = ComputeHash(name);
         uint32_t ent = hash & (hash_table_size - 1);
 
@@ -102,12 +82,11 @@ namespace hms {
         return 0;
     }
 
-    int32_t ZipFile::MapCentralDirectory0(const char *debug_file_name, ZipFile *archive,
-                                          off64_t file_length, off64_t read_amount,
+    int32_t ZipFile::MapCentralDirectory0(off64_t file_length, off64_t read_amount,
                                           uint8_t *scan_buffer) {
         const off64_t search_start = file_length - read_amount;
 
-        if (!archive->mapped_zip.ReadAtOffset(scan_buffer, read_amount, search_start)) {
+        if (!mapped_zip->ReadAtOffset(scan_buffer, read_amount, search_start)) {
             HLOGE("Zip: read %"
                           PRId64
                           " from offset %"
@@ -134,7 +113,7 @@ namespace hms {
             }
         }
         if (i < 0) {
-            HLOGD("Zip: EOCD not found, %s is not zip", debug_file_name);
+            HLOGD("Zip: EOCD not found, %s is not zip", mArchiveName);
             return kInvalidFile;
         }
 
@@ -167,7 +146,6 @@ namespace hms {
                           ")",
                   eocd->cd_start_offset, eocd->cd_size, static_cast<int64_t>(eocd_offset));
             if (eocd->cd_start_offset + eocd->cd_size <= eocd_offset) {
-//      android_errorWriteLog(0x534e4554, "31251826");
                 HLOGE("31251826");
             }
             return kInvalidOffset;
@@ -190,24 +168,23 @@ namespace hms {
          * in archive.
          */
 
-        if (!archive->InitializeCentralDirectory(debug_file_name,
-                                                 static_cast<off64_t>(eocd->cd_start_offset),
-                                                 static_cast<size_t>(eocd->cd_size))) {
+        if (!InitializeCentralDirectory(static_cast<off64_t>(eocd->cd_start_offset),
+                                        static_cast<size_t>(eocd->cd_size))) {
             HLOGE("Zip: failed to intialize central directory.\n");
             return kMmapFailed;
         }
 
-        archive->num_entries = eocd->num_records;
-        archive->directory_offset = eocd->cd_start_offset;
+        num_entries = eocd->num_records;
+        directory_offset = eocd->cd_start_offset;
 
         return 0;
     }
 
-    int32_t ZipFile::MapCentralDirectory(const char *debug_file_name, ZipFile *archive) {
+    int32_t ZipFile::MapCentralDirectory() {
         // Test file length. We use lseek64 to make sure the file
         // is small enough to be a zip file (Its size must be less than
         // 0xffffffff bytes).
-        off64_t file_length = archive->mapped_zip.GetFileLength();
+        off64_t file_length = mapped_zip->GetFileLength();
         if (file_length == -1) {
             return kInvalidFile;
         }
@@ -244,27 +221,27 @@ namespace hms {
 
         std::vector<uint8_t> scan_buffer(read_amount);
         int32_t result =
-                MapCentralDirectory0(debug_file_name, archive, file_length, read_amount,
+                MapCentralDirectory0(file_length, read_amount,
                                      scan_buffer.data());
         return result;
     }
 
-    int32_t ZipFile::ParseZipArchive(ZipFile *archive) {
-        const uint8_t *const cd_ptr = archive->central_directory.GetBasePtr();
-        const size_t cd_length = archive->central_directory.GetMapLength();
-        const uint16_t num_entries = archive->num_entries;
+    int32_t ZipFile::ParseZipArchive() {
+        const uint8_t *const cd_ptr = central_directory.GetBasePtr();
+        const size_t cd_length = central_directory.GetMapLength();
+//        const uint16_t num_entries = num_entries;
 
         /*
          * Create hash table.  We have a minimum 75% load factor, possibly as
          * low as 50% after we round off to a power of 2.  There must be at
          * least one unused entry to avoid an infinite loop during creation.
          */
-        archive->hash_table_size = RoundUpPower2(1 + (num_entries * 4) / 3);
-        archive->hash_table =
-                reinterpret_cast<ZipString *>(calloc(archive->hash_table_size, sizeof(ZipString)));
-        if (archive->hash_table == nullptr) {
+        hash_table_size = RoundUpPower2(1 + (num_entries * 4) / 3);
+        hash_table =
+                reinterpret_cast<ZipString *>(calloc(hash_table_size, sizeof(ZipString)));
+        if (hash_table == nullptr) {
             HLOGW("Zip: unable to allocate the %u-entry hash_table, entry size: %zu",
-                  archive->hash_table_size, sizeof(ZipString));
+                  hash_table_size, sizeof(ZipString));
             return -1;
         }
 
@@ -291,7 +268,7 @@ namespace hms {
             }
 
             const off64_t local_header_offset = cdr->local_file_header_offset;
-            if (local_header_offset >= archive->directory_offset) {
+            if (local_header_offset >= directory_offset) {
                 HLOGW("Zip: bad LFH offset %"
                               PRId64
                               " at entry %"
@@ -323,8 +300,7 @@ namespace hms {
             ZipString entry_name;
             entry_name.name = file_name;
             entry_name.name_length = file_name_length;
-            const int add_result = AddToHash(archive->hash_table, archive->hash_table_size,
-                                             entry_name);
+            const int add_result = AddToHash(entry_name);
             if (add_result != 0) {
                 HLOGW("Zip: Error adding entry to hash table %d", add_result);
                 return add_result;
@@ -340,7 +316,7 @@ namespace hms {
         }
 
         uint32_t lfh_start_bytes;
-        if (!archive->mapped_zip.ReadAtOffset(reinterpret_cast<uint8_t *>(&lfh_start_bytes),
+        if (!mapped_zip->ReadAtOffset(reinterpret_cast<uint8_t *>(&lfh_start_bytes),
                                               sizeof(uint32_t), 0)) {
             HLOGW("Zip: Unable to read header for entry at offset == 0.");
             return -1;
@@ -359,43 +335,33 @@ namespace hms {
         return 0;
     }
 
-    int32_t ZipFile::OpenArchiveInternal(ZipFile *archive, const char *debug_file_name) {
+    int32_t ZipFile::OpenArchiveInternal() {
         int32_t result = -1;
-        if ((result = MapCentralDirectory(debug_file_name, archive)) != 0) {
+        if ((result = MapCentralDirectory()) != 0) {
             return result;
         }
 
-        if ((result = ParseZipArchive(archive))) {
+        if ((result = ParseZipArchive())) {
             return result;
         }
 
         return 0;
     }
 
-    int32_t ZipFile::OpenArchive(const char *fileName, ZipFileHandle *handle) {
+    int32_t ZipFile::OpenArchive() {
         HLOGENTRY();
-        const int fd = open(fileName, O_RDONLY | O_BINARY, 0);
-        ZipFile *archive = new ZipFile(fd, true);
-        *handle = archive;
-
+        const int fd = open(mArchiveName, O_RDONLY | O_BINARY, 0);
         if (fd < 0) {
-            HLOGW("Unable to open '%s': %s", fileName, strerror(errno));
+            HLOGW("Unable to open '%s': %s", mArchiveName, strerror(errno));
             return kIoError;
         }
-
-        return OpenArchiveInternal(archive, fileName);
+        mapped_zip = std::unique_ptr<hms::MappedZipFile>(new MappedZipFile(fd));
+        return OpenArchiveInternal();
     }
 
-    void ZipFile::CloseArchive(ZipFileHandle handle) {
-        HLOGENTRY();
-        ZipFile *archive = reinterpret_cast<ZipFile *>(handle);
-        HLOGV("Closing archive %p", archive);
-        delete archive;
-    }
-
-    int32_t ZipFile::ValidateDataDescriptor(hms::MappedZipFile &mapped_zip, ZipEntry *entry) {
+    int32_t ZipFile::ValidateDataDescriptor(ZipEntry *entry) {
         uint8_t ddBuf[sizeof(DataDescriptor) + sizeof(DataDescriptor::kOptSignature)];
-        if (!mapped_zip.ReadData(ddBuf, sizeof(ddBuf))) {
+        if (!mapped_zip->ReadData(ddBuf, sizeof(ddBuf))) {
             return kIoError;
         }
 
@@ -430,20 +396,20 @@ namespace hms {
     }
 
     int32_t
-    ZipFile::FindEntry(const ZipFile *archive, const int ent, ZipEntry *data) {
-        const uint16_t nameLen = archive->hash_table[ent].name_length;
+    ZipFile::FindEntry(const int ent, ZipEntry *data) {
+        const uint16_t nameLen = hash_table[ent].name_length;
 
         // Recover the start of the central directory entry from the filename
         // pointer.  The filename is the first entry past the fixed-size data,
         // so we can just subtract back from that.
-        const uint8_t *ptr = archive->hash_table[ent].name;
+        const uint8_t *ptr = hash_table[ent].name;
         ptr -= sizeof(CentralDirectoryRecord);
 
         // This is the base of our mmapped region, we have to sanity check that
         // the name that's in the hash table is a pointer to a location within
         // this mapped region.
-        const uint8_t *base_ptr = archive->central_directory.GetBasePtr();
-        if (ptr < base_ptr || ptr > base_ptr + archive->central_directory.GetMapLength()) {
+        const uint8_t *base_ptr = central_directory.GetBasePtr();
+        if (ptr < base_ptr || ptr > base_ptr + central_directory.GetMapLength()) {
             HLOGW("Zip: Invalid entry pointer");
             return kInvalidOffset;
         }
@@ -453,7 +419,7 @@ namespace hms {
         // The offset of the start of the central directory in the zipfile.
         // We keep this lying around so that we can sanity check all our lengths
         // and our per-file structures.
-        const off64_t cd_offset = archive->directory_offset;
+        const off64_t cd_offset = directory_offset;
 
         // Fill out the compression method, modification time, crc32
         // and other interesting attributes from the central directory. These
@@ -468,13 +434,13 @@ namespace hms {
         // actual file data will begin after the local header and the name /
         // extra comments.
         const off64_t local_header_offset = cdr->local_file_header_offset;
-        if (local_header_offset + static_cast<off64_t>(sizeof(LocalFileHeader)) >= cd_offset) {
+        if (local_header_offset + static_cast<off64_t>(sizeof(LocalFileHeader)) >= directory_offset) {
             HLOGW("Zip: bad local hdr offset in zip");
             return kInvalidOffset;
         }
 
         uint8_t lfh_buf[sizeof(LocalFileHeader)];
-        if (!archive->mapped_zip.ReadAtOffset(lfh_buf, sizeof(lfh_buf), local_header_offset)) {
+        if (!mapped_zip->ReadAtOffset(lfh_buf, sizeof(lfh_buf), local_header_offset)) {
             HLOGW("Zip: failed reading lfh name from offset %"
                           PRId64,
                   static_cast<int64_t>(local_header_offset));
@@ -554,19 +520,19 @@ namespace hms {
         // name in the central directory.
         if (lfh->file_name_length == nameLen) {
             const off64_t name_offset = local_header_offset + sizeof(LocalFileHeader);
-            if (name_offset + lfh->file_name_length > cd_offset) {
+            if (name_offset + lfh->file_name_length > directory_offset) {
                 HLOGW("Zip: Invalid declared length");
                 return kInvalidOffset;
             }
 
             std::vector<uint8_t> name_buf(nameLen);
-            if (!archive->mapped_zip.ReadAtOffset(name_buf.data(), nameLen, name_offset)) {
+            if (!mapped_zip->ReadAtOffset(name_buf.data(), nameLen, name_offset)) {
                 HLOGW("Zip: failed reading lfh name from offset %"
                               PRId64, static_cast<int64_t>(name_offset));
                 return kIoError;
             }
 
-            if (memcmp(archive->hash_table[ent].name, name_buf.data(), nameLen)) {
+            if (memcmp(hash_table[ent].name, name_buf.data(), nameLen)) {
                 return kInconsistentInformation;
             }
 
@@ -577,14 +543,14 @@ namespace hms {
 
         const off64_t data_offset = local_header_offset + sizeof(LocalFileHeader) +
                                     lfh->file_name_length + lfh->extra_field_length;
-        if (data_offset > cd_offset) {
+        if (data_offset > directory_offset) {
             HLOGW("Zip: bad data offset %"
                           PRId64
                           " in zip", static_cast<int64_t>(data_offset));
             return kInvalidOffset;
         }
 
-        if (static_cast<off64_t>(data_offset + data->compressed_length) > cd_offset) {
+        if (static_cast<off64_t>(data_offset + data->compressed_length) > directory_offset) {
             HLOGW("Zip: bad compressed length in zip (%"
                           PRId64
                           " + %"
@@ -593,12 +559,12 @@ namespace hms {
                           PRId64
                           ")",
                   static_cast<int64_t>(data_offset), data->compressed_length,
-                  static_cast<int64_t>(cd_offset));
+                  static_cast<int64_t>(directory_offset));
             return kInvalidOffset;
         }
 
         if (data->method == kCompressStored &&
-            static_cast<off64_t>(data_offset + data->uncompressed_length) > cd_offset) {
+            static_cast<off64_t>(data_offset + data->uncompressed_length) > directory_offset) {
             HLOGW("Zip: bad uncompressed length in zip (%"
                           PRId64
                           " + %"
@@ -607,7 +573,7 @@ namespace hms {
                           PRId64
                           ")",
                   static_cast<int64_t>(data_offset), data->uncompressed_length,
-                  static_cast<int64_t>(cd_offset));
+                  static_cast<int64_t>(directory_offset));
             return kInvalidOffset;
         }
 
@@ -616,48 +582,39 @@ namespace hms {
     }
 
 
-    int32_t ZipFile::StartIteration(ZipFileHandle handle, void **cookie_ptr,
-                                    const ZipString *optional_prefix,
+    int32_t ZipFile::StartIteration(const ZipString *optional_prefix,
                                     const ZipString *optional_suffix) {
         HLOGENTRY();
-        ZipFile *archive = reinterpret_cast<ZipFile *>(handle);
-
-        if (archive == NULL || archive->hash_table == NULL) {
+        if (hash_table == nullptr) {
             HLOGW("Zip: Invalid ZipFileHandle");
             return kInvalidHandle;
         }
 
-        IterationHandle *cookie = new IterationHandle(optional_prefix, optional_suffix);
-        cookie->position = 0;
-        cookie->archive = archive;
-
-        *cookie_ptr = cookie;
+        mCookie = std::unique_ptr<IterationHandle>(new IterationHandle(optional_prefix, optional_suffix));
+        mCookie->position = 0;
+//        mCookie->archive = this;
         return 0;
     }
 
 
-    int32_t ZipFile::Next(void *cookie, ZipEntry *data, ZipString *name) {
-        IterationHandle *handle = reinterpret_cast<IterationHandle *>(cookie);
-        if (handle == NULL) {
+    int32_t ZipFile::Next(ZipEntry *data, ZipString *name) {
+        if (mCookie == NULL) {
             return kInvalidHandle;
         }
 
-        ZipFile *archive = handle->archive;
-        if (archive == NULL || archive->hash_table == NULL) {
+        if (hash_table == NULL) {
             HLOGW("Zip: Invalid ZipFileHandle");
             return kInvalidHandle;
         }
 
-        const uint32_t currentOffset = handle->position;
-        const uint32_t hash_table_length = archive->hash_table_size;
-        const ZipString *hash_table = archive->hash_table;
+        const uint32_t currentOffset = mCookie->position;
 
-        for (uint32_t i = currentOffset; i < hash_table_length; ++i) {
+        for (uint32_t i = currentOffset; i < hash_table_size; ++i) {
             if (hash_table[i].name != NULL &&
-                (handle->prefix.name_length == 0 || hash_table[i].StartsWith(handle->prefix)) &&
-                (handle->suffix.name_length == 0 || hash_table[i].EndsWith(handle->suffix))) {
-                handle->position = (i + 1);
-                const int error = FindEntry(archive, i, data);
+                (mCookie->prefix.name_length == 0 || hash_table[i].StartsWith(mCookie->prefix)) &&
+                (mCookie->suffix.name_length == 0 || hash_table[i].EndsWith(mCookie->suffix))) {
+                mCookie->position = (i + 1);
+                const int error = FindEntry(i, data);
                 if (!error) {
                     name->name = hash_table[i].name;
                     name->name_length = hash_table[i].name_length;
@@ -667,31 +624,10 @@ namespace hms {
             }
         }
 
-        handle->position = 0;
+        mCookie->position = 0;
         return kIterationEnd;
     }
 
-    void ZipFile::EndIteration(void *cookie) {
-        HLOGENTRY();
-        delete reinterpret_cast<IterationHandle *>(cookie);
-    }
-
-    int32_t ZipFile::FindEntry(const ZipFileHandle handle, const ZipString &entryName, ZipEntry *data) {
-        const ZipFile *archive = reinterpret_cast<ZipFile *>(handle);
-        if (entryName.name_length == 0) {
-            HLOGW("Zip: Invalid filename %.*s", entryName.name_length, entryName.name);
-            return kInvalidEntryName;
-        }
-
-        const int64_t ent = EntryToIndex(archive->hash_table, archive->hash_table_size, entryName);
-
-        if (ent < 0) {
-            HLOGV("Zip: Could not find entry %.*s", entryName.name_length, entryName.name);
-            return ent;
-        }
-
-        return FindEntry(archive, ent, data);
-    }
     // This method is using libz macros with old-style-casts
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
@@ -702,8 +638,8 @@ namespace hms {
 
 #pragma GCC diagnostic pop
 
-    int32_t ZipFile::InflateEntryToWriter(hms::MappedZipFile &mapped_zip, const ZipEntry *entry,
-                                        Writer *writer, uint64_t *crc_out) {
+    int32_t ZipFile::InflateEntryToWriter(const ZipEntry *entry,
+                                          Writer *writer, uint64_t *crc_out) {
         HLOGENTRY();
         const size_t kBufSize = 32768;
         std::vector<uint8_t> read_buf(kBufSize);
@@ -743,7 +679,8 @@ namespace hms {
             inflateEnd(stream); /* free up any allocated structures */
         };
 
-        std::unique_ptr<z_stream, decltype(zstream_deleter)> zstream_guard(&zstream, zstream_deleter);
+        std::unique_ptr<z_stream, decltype(zstream_deleter)> zstream_guard(&zstream,
+                                                                           zstream_deleter);
 
         const uint32_t uncompressed_length = entry->uncompressed_length;
 
@@ -752,8 +689,9 @@ namespace hms {
         do {
             /* read as much as we can */
             if (zstream.avail_in == 0) {
-                const size_t getSize = (compressed_length > kBufSize) ? kBufSize : compressed_length;
-                if (!mapped_zip.ReadData(read_buf.data(), getSize)) {
+                const size_t getSize = (compressed_length > kBufSize) ? kBufSize
+                                                                      : compressed_length;
+                if (!mapped_zip->ReadData(read_buf.data(), getSize)) {
                     HLOGW("Zip: inflate read failed, getSize = %zu: %s", getSize, strerror(errno));
                     return kIoError;
                 }
@@ -808,8 +746,9 @@ namespace hms {
         return 0;
     }
 
-    int32_t ZipFile::CopyEntryToWriter(hms::MappedZipFile &mapped_zip, const ZipEntry *entry, Writer *writer,
-                                     uint64_t *crc_out) {
+    int32_t ZipFile::CopyEntryToWriter(const ZipEntry *entry,
+                                       Writer *writer,
+                                       uint64_t *crc_out) {
         HLOGENTRY();
         static const uint32_t kBufSize = 32768;
         std::vector<uint8_t> buf(kBufSize);
@@ -823,7 +762,7 @@ namespace hms {
             // Safe conversion because kBufSize is narrow enough for a 32 bit signed
             // value.
             const size_t block_size = (remaining > kBufSize) ? kBufSize : remaining;
-            if (!mapped_zip.ReadData(buf.data(), block_size)) {
+            if (!mapped_zip->ReadData(buf.data(), block_size)) {
                 HLOGW("CopyFileToFile: copy read failed, block_size = %zu: %s", block_size,
                       strerror(errno));
                 return kIoError;
@@ -841,13 +780,12 @@ namespace hms {
         return 0;
     }
 
-    int32_t  ZipFile::ExtractToWriter(ZipFileHandle handle, ZipEntry *entry, Writer *writer) {
+    int32_t ZipFile::ExtractToWriter(ZipEntry *entry, Writer *writer) {
         HLOGENTRY();
-        ZipFile *archive = reinterpret_cast<ZipFile *>(handle);
         const uint16_t method = entry->method;
         off64_t data_offset = entry->offset;
 
-        if (!archive->mapped_zip.SeekToOffset(data_offset)) {
+        if (!mapped_zip->SeekToOffset(data_offset)) {
             HLOGW("Zip: lseek to data at %"
                           PRId64
                           " failed", static_cast<int64_t>(data_offset));
@@ -858,13 +796,13 @@ namespace hms {
         int32_t return_value = -1;
         uint64_t crc = 0;
         if (method == kCompressStored) {
-            return_value = CopyEntryToWriter(archive->mapped_zip, entry, writer, &crc);
+            return_value = CopyEntryToWriter(entry, writer, &crc);
         } else if (method == kCompressDeflated) {
-            return_value = InflateEntryToWriter(archive->mapped_zip, entry, writer, &crc);
+            return_value = InflateEntryToWriter(entry, writer, &crc);
         }
 
         if (!return_value && entry->has_data_descriptor) {
-            return_value = ValidateDataDescriptor(archive->mapped_zip, entry);
+            return_value = ValidateDataDescriptor(entry);
             if (return_value) {
                 return return_value;
             }
@@ -882,17 +820,17 @@ namespace hms {
         return return_value;
     }
 
-    int32_t ZipFile::ExtractEntryToFile(ZipFileHandle handle, ZipEntry *entry, int fd) {
+    int32_t ZipFile::ExtractEntryToFile(ZipEntry *entry, int fd) {
         HLOGENTRY();
         std::unique_ptr<Writer> writer(FileWriter::Create(fd, entry));
         if (writer.get() == nullptr) {
             return kIoError;
         }
 
-        return ExtractToWriter(handle, entry, writer.get());
+        return ExtractToWriter(entry, writer.get());
     }
 
-    const char*ZipFile::ErrorCodeString(int32_t error_code) {
+    const char *ZipFile::ErrorCodeString(int32_t error_code) {
         // Make sure that the number of entries in kErrorMessages and ErrorCodes
         // match.
         static_assert((-kLastErrorCode + 1) == arraysize(kErrorMessages),
@@ -906,23 +844,24 @@ namespace hms {
         return "Unknown return code";
     }
 
-    bool ZipFile::InitializeCentralDirectory(const char *debug_file_name, off64_t cd_start_offset,
+    bool ZipFile::InitializeCentralDirectory(off64_t cd_start_offset,
                                              size_t cd_size) {
-        if (mapped_zip.HasFd()) {
-            if (!directory_map->create(debug_file_name, mapped_zip.GetFileDescriptor(), cd_start_offset,
+        if (mapped_zip->HasFd()) {
+            if (!directory_map->create(mArchiveName, mapped_zip->GetFileDescriptor(),
+                                       cd_start_offset,
                                        cd_size, true /* read only */)) {
                 return false;
             }
 
-    //        CHECK_EQ(directory_map->getDataLength(), cd_size);
+            //        CHECK_EQ(directory_map->getDataLength(), cd_size);
             central_directory.Initialize(directory_map->getDataPtr(), 0 /*offset*/, cd_size);
         } else {
-            if (mapped_zip.GetBasePtr() == nullptr) {
+            if (mapped_zip->GetBasePtr() == nullptr) {
                 HLOGE("Zip: Failed to map central directory, bad mapped_zip base pointer\n");
                 return false;
             }
             if (static_cast<off64_t>(cd_start_offset) + static_cast<off64_t>(cd_size) >
-                mapped_zip.GetFileLength()) {
+                mapped_zip->GetFileLength()) {
                 HLOGE(
                         "Zip: Failed to map central directory, offset exceeds mapped memory region ("
                         "start_offset %"
@@ -930,11 +869,12 @@ namespace hms {
                         ", cd_size %zu, mapped_region_size %"
                         PRId64
                         ")",
-                        static_cast<int64_t>(cd_start_offset), cd_size, mapped_zip.GetFileLength());
+                        static_cast<int64_t>(cd_start_offset), cd_size,
+                        mapped_zip->GetFileLength());
                 return false;
             }
 
-            central_directory.Initialize(mapped_zip.GetBasePtr(), cd_start_offset, cd_size);
+            central_directory.Initialize(mapped_zip->GetBasePtr(), cd_start_offset, cd_size);
         }
         return true;
     }

@@ -18,6 +18,7 @@
 #include "MappedZipFile.h"
 
 #include "HLog.h"
+
 #define LOG_TAG "MappedZipFile"
 
 namespace hms {
@@ -76,11 +77,15 @@ namespace hms {
         }
     }
 
-    bool MappedZipFile::ReadFully(int fd, void *data, size_t byte_count) {
+    bool MappedZipFile::ReadFully(void *data, size_t byte_count) {
+        if (!has_fd_) {
+            HLOGE("Invalid ZipFile fd");
+            return false;
+        }
         uint8_t *p = reinterpret_cast<uint8_t *>(data);
         size_t remaining = byte_count;
         while (remaining > 0) {
-            ssize_t n = TEMP_FAILURE_RETRY(read(fd, p, remaining));
+            ssize_t n = TEMP_FAILURE_RETRY(read(fd_, p, remaining));
             if (n <= 0) return false;
             p += n;
             remaining -= n;
@@ -90,7 +95,7 @@ namespace hms {
 
     bool MappedZipFile::ReadData(uint8_t *buffer, size_t read_amount) {
         if (has_fd_) {
-            if (!ReadFully(fd_, buffer, read_amount)) {
+            if (!ReadFully(buffer, read_amount)) {
                 HLOGE("Zip: read from %d failed\n", fd_);
                 return false;
             }

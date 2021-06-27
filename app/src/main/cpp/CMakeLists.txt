@@ -26,7 +26,6 @@ add_library( # Sets the name of the library.
         native-lib.cpp
         src/MappedZipFile.cpp
         src/FileMap.cpp
-        src/zip_archive.cpp
         src/unzip.cpp
         src/File.cpp
         src/StringUtils.cpp

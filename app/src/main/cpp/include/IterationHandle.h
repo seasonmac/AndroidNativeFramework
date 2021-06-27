@@ -15,7 +15,6 @@ namespace hms {
         // where the STL is not available.
         ZipString prefix;
         ZipString suffix;
-        ZipFile *archive;
 
         IterationHandle(const ZipString *in_prefix, const ZipString *in_suffix) {
             if (in_prefix) {

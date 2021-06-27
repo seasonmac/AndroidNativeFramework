@@ -45,6 +45,6 @@ namespace hms {
         size_t read_pos_;
 
     private:
-        bool ReadFully(int fd, void *data, size_t byte_count);
+        bool ReadFully(void *data, size_t byte_count);
     };
 }
