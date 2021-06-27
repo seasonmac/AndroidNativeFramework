@@ -2,6 +2,7 @@ package com.huawei.zip;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.app.ProgressDialog;
 import android.content.Context;
 import android.os.Bundle;
 import android.util.Log;
@@ -11,13 +12,14 @@ import android.widget.TextView;
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileDescriptor;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.zip.ZipFile;
 
 public class MainActivity extends AppCompatActivity {
-
+    private static long gFileSize = 0;
     // Used to load the 'native-lib' library on application startup.
     static {
         System.loadLibrary("native-lib");
@@ -30,20 +32,38 @@ public class MainActivity extends AppCompatActivity {
 
         // Example of a call to a native method
         TextView tv = findViewById(R.id.sample_text);
-        tv.setText(stringFromJNI());
+        tv.setText("点击按钮进行性能测试");
         Button unzipTestButton = findViewById(R.id.button);
         String zipPath = getPackageResourcePath();
         String targetDir = getCacheDir().getAbsolutePath();
         unzipTestButton.setOnClickListener((view) -> {
-            long native_start = System.currentTimeMillis();
-            unzip(zipPath, "assets/manager.apk", targetDir);
-            Log.i("Perf_unzip_native", "cost time :" + (System.currentTimeMillis() - native_start) + "ms");
             long start = System.currentTimeMillis();
+            unzip(zipPath, "assets/manager.apk", targetDir);
+            long native_time = System.currentTimeMillis() - start;
+            Log.i("Perf_unzip_native", "cost time :" + native_time + "ms");
+
+            start = System.currentTimeMillis();
             copyApk(getBaseContext(), "manager.apk", "manager_AssetManager.apk");
-            Log.i("Perf_unzip_assetmanager", "cost time :" + (System.currentTimeMillis() - start) + "ms");
+            long am_time = System.currentTimeMillis() - start;
+            Log.i("Perf_unzip_assetmanager", "cost time :" + am_time + "ms");
+
             start = System.currentTimeMillis();
             copyApk2(zipPath, "assets/manager.apk", targetDir + "/manager_ZipFile.apk");
-            Log.i("Perf_unzip_zipfile", "cost time :" + (System.currentTimeMillis() - start) + "ms");
+            long zipfile_time = System.currentTimeMillis() - start;
+            Log.i("Perf_unzip_zipfile", "cost time :" + zipfile_time + "ms");
+
+            try {
+                gFileSize = new FileInputStream(targetDir + "/manager.apk").available()/1024;
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            tv.setText(
+                    "assets/Manager.apk文件大小：" + (gFileSize) + "KB \n" +
+                    "Native解压耗时：" + native_time + " ms " + "\n" +
+                    "AssetManager解压耗时：" + am_time + " ms " + "\n" +
+                    "ZipFile解压耗时：" + zipfile_time + " ms " + "\n");
+
         });
     }
 
@@ -86,12 +106,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return false;
     }
-
-    /**
-     * A native method that is implemented by the 'native-lib' native library,
-     * which is packaged with this application.
-     */
-    public native String stringFromJNI();
 
     public native boolean unzip(String zipPath, String fileName, String targetDir);
 }
